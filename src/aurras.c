@@ -9,50 +9,71 @@
 
 #define BUFFER_SIZE 1024
 #define QUEUE_NAME "queue"
+#define STATUS_NAME "status"
 
 int status;
 
 void progress_signal(int signum)
 {
 	status++;
-	if (status == 1) {printf("processing "); pause();}
-	if (status == 2) {printf("finished"); alarm(1);}
+	if (status == 1) {printf("pending\n"); pause();}
+	if (status == 2) {printf("processing\n"); pause();}
+	if (status == 3) {printf("finished!\n"); alarm(1);}
 }
 void error_signal(int signum)
 {
-	printf("Signal %d received. Server error.", signum);
+	printf("Signal %d received. Server error.\n", signum);
 }
 
 int main(int argc, char **argv)
 {
-	signal(SIGUSR1, progress_signal);
-	signal(SIGUSR2, error_signal);
-	signal(SIGALRM, SIG_IGN);
 
-	char stdout_buffer[BUFFER_SIZE];
-	setvbuf(stdout, stdout_buffer, _IONBF, BUFFER_SIZE);
-
-	int queue_fd = open(QUEUE_NAME, O_WRONLY);
-	printf("Session open (pid: %d)!", getpid());
-
-	//argv[1] ficheiro original
-	//argv[2] ficheiro destino
-	//argv[3-] filtros
-
-	int size = 0;
-	char buffer[1024];
-
-	size += sprintf(buffer, "%d ", getpid());
-	for ( int i = 1; i < argc; i++)
+	if(strcmp(argv[1], "status") == 0)
 	{
-		size += sprintf(&buffer[size],"%s ", argv[i]);
+		//status
+		int bytes_read = 0, status_fd = open("status", O_RDONLY);
+		char buffer[BUFFER_SIZE];
+		while((bytes_read = read(status_fd, buffer, BUFFER_SIZE)))
+			write(1, buffer, bytes_read);
+		close(status_fd);
+		return 0;
 	}
-	buffer[size] = '\n';
-	write(queue_fd, buffer, size+1);
+	else if (strcmp(argv[1], "transform") == 0)
+	{
+		//transform
+		signal(SIGUSR1, progress_signal);
+		signal(SIGUSR2, error_signal);
+		signal(SIGALRM, SIG_IGN);
+		status = 0;
 
-	printf("pending ");
-	pause();
+		char stdout_buffer[BUFFER_SIZE];
+		setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE);
 
-	close(queue_fd);
-	return 0;
+		int queue_fd = open(QUEUE_NAME, O_WRONLY);
+		printf("Session open (pid: %d)!\n", getpid());
+
+		//argv[1] transform
+		//argv[2] ficheiro original
+		//argv[3] ficheiro destino
+		//argv[4-] filtros
+
+		int size = 0;
+		char buffer[1024];
+
+		size += sprintf(buffer, "%d ", getpid());
+		for ( int i = 1; i < argc; i++)
+		{
+			size += sprintf(&buffer[size],"%s ", argv[i]);
+		}
+		buffer[size] = '\n';
+		write(queue_fd, buffer, size+1);
+
+		pause();
+
+		close(queue_fd);
+		return 1;
+	} else {
+		printf("Operation not recognized: %s\n",argv[1]);
+		return -1;
+	}
 }

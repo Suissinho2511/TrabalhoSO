@@ -6,19 +6,30 @@
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <wait.h>
 
 #define BUFFER_SIZE 1024
 #define QUEUE_NAME "queue"
+#define STATUS_NAME "status"
 
 int readLn(int fd, char* buffer, int size);
-char** parse(char* buffer, int size, char* delim);
+int parse(char** parsed, char* buffer, int size, char* delim);
 void freearr(void** pointer, int size);
 int myexec(int in_fd, int out_fd, char* bin_name, char** args);
+
+typedef struct status {
+	int pid_server;
+	char* filtros;
+	char* filtros_traduzidos;
+	int* max;
+	int* running;
+	char** tasks;
+} *STATUS;
 
 void sigterm_handler(int signum)
 {
 	printf("Closing server...\n");
-	//...
+	unlink(STATUS_NAME);
 	unlink(QUEUE_NAME);
 	printf("Server closed!\n");
 }
@@ -32,11 +43,14 @@ int main(int argc, char **argv)
 
 	mkfifo(QUEUE_NAME, 0666);
 	int queue_fd = open(QUEUE_NAME, O_RDONLY);
+	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC);
+	int conf_fd = open(argv[1], O_RDONLY | O_EXCL);
 	printf("Server Online (pid: %d)!\n", getpid());
+	//TODO: Interpretar Config file
 
-	int bytes_read = 0, pid;
+	int bytes_read = 0, size, pid, pid_cliente, wstatus;
 	char buffer[BUFFER_SIZE];
-	char** parsed;
+	char** parsed = calloc(1, sizeof(char*)); //temporário
 	while(1)
 	{
 		printf("Waiting for request... ");
@@ -45,20 +59,29 @@ int main(int argc, char **argv)
 		{
 			//queue:
 			//pid filenameoriginal filenamedestino filtro0 filtro1 ...\n
-			parsed = parse(buffer, bytes_read, " ");
-			printf("Request received (pid: %s).\n", parsed[0]);
+			size = parse(parsed, buffer, bytes_read, " ");
+			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			//pai -> Controller -> filho(ffmpeg)
+			//TODO: Limitar o numero de processos ativos simultaneamente
+			//TODO: Update do status
+			//server -> Controller -> filho(ffmpeg)
 			if((pid = fork()) == 0)
 			{
-				pid = myexec(stdin, stdout, "ffmpeg", &parsed[1]);
-				kill(atol(parsed[0]), SIGUSR1); //processing
-				wait(pid);
-				kill(atol(parsed[0]), SIGUSR1); //finished
-				_exit(0);
+				pid_cliente = atol(parsed[0]);	
+				pid = myexec(0, 1, "ffmpeg", parsed); //replaces parsed[0] with bin_name btw
+
+				kill(pid_cliente, SIGUSR1); 		//processing
+				waitpid(pid, &wstatus, 0);		//waits till ffmpeg finishes...
+				if(WIFEXITED(wstatus))
+					kill(pid_cliente, SIGUSR1); 	//finished
+				else					//or
+					kill(pid_cliente, SIGUSR2);	//error
+
+				_exit(0);				//exits
 			}
-			freearr(parsed, 0); //wrong btw
+			freearr((void**) parsed, size); //not gonna stay here
 		}
+		freearr((void**) parsed, 1); //temporário
 	}
 	return 0;
 }
@@ -70,18 +93,17 @@ int readLn(int fd, char* buffer, int size)
 	{
 		if(buffer[bytes_read] == '\n') break;
 	}
-	buffer[bytes_read] = NULL;
+	buffer[bytes_read] = '\0';
 
 	return bytes_read;
 }
 
-char** parse(char* buffer, int size, char* delim)
+int parse(char** parsed, char* buffer, int size, char* delim)
 {
-	char* token;
-	char** parsed = calloc(size+1, sizeof(char));
-
-	token = strtok(buffer, delim);
-	for(int i = 0; ; i++)
+	//char** parsed = calloc(size+1, sizeof(char));
+	int i;
+	char* token = strtok(buffer, delim);
+	for(i = 0; ; i++)
 	{
 		parsed[i] = strdup(token);
 		token = strtok(NULL, delim);
@@ -92,7 +114,7 @@ char** parse(char* buffer, int size, char* delim)
 		}
 	}
 
-	return parsed;
+	return i;
 }
 
 void freearr(void** pointer, int size)
@@ -108,11 +130,12 @@ int myexec(int in_fd, int out_fd, char* bin_name, char** args)
 	if((pid = fork()) == 0)
 	{
 		//filho
-		dup2(in_fd, stdin);
-		dup2(out_fd, stdout);
-		execvp(bin_name, args); //wrong ?
+		args[0] = bin_name;
+		dup2(in_fd, 0);
+		dup2(out_fd, 1);
+		execvp(bin_name, args);
 	}
-	else return pid;
+	return pid;
 }
 
 
