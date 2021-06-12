@@ -23,6 +23,7 @@ typedef struct status {
 	char **filters, **filtersT, **tasks;
 } *STATUS;
 
+int run = 1;
 STATUS newStatus();
 STATUS readStatus(STATUS s, char* conf_filepath);
 STATUS addTask(STATUS s, char** task, int task_number);
@@ -34,6 +35,7 @@ void sigterm_handler(int signum)
 	printf("Closing server...\n");
 	unlink(STATUS_NAME);
 	unlink(QUEUE_NAME);
+	run = 0;
 	printf("Server closed!\n");
 }
 
@@ -56,7 +58,7 @@ int main(int argc, char **argv)
 	int bytes_read = 0, size, pid, pid_cliente, wstatus, task_num = 0;
 	char buffer[BUFFER_SIZE];
 	char** parsed = calloc(s->num_filters+4, sizeof(char*));
-	while(1)
+	while(run == 1)
 	{
 		printf("Waiting for request... ");
 		fflush(stdout);
