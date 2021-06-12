@@ -27,7 +27,7 @@ int run = 1;
 STATUS newStatus();
 STATUS readStatus(STATUS s, char* conf_filepath);
 STATUS addTask(STATUS s, char** task, int task_number);
-STATUS removeTask(STATUS s, int task_number);
+STATUS removeTask(STATUS s, char** task, int task_number);
 int canRun(STATUS s, char** task);
 
 void sigterm_handler(int signum)
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
 				else					//or
 					kill(pid_cliente, SIGUSR2);	//error
 
-				removeTask(s, task_num);		//update Status (remove task)
+				removeTask(s, parsed, task_num);		//update Status (remove task)
 				_exit(0);				//exits
 			}
 
@@ -189,6 +189,45 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 
 	}
 
+	return s;
+}
+
+STATUS addTask(STATUS s, char** task, int task_number){
+	for (int i=3; task[i] != NULL; i++){
+		for(int j =0; j < s->num_filters; j++){
+			if (strcmp(task[i], s ->filters[j])) {
+				s->running[i]++;
+			}
+		}
+	}
+	char *c = malloc(BUFFER_SIZE);
+	for (int i=1; task[i] != NULL; i++){
+		strcat(c, task[i]);
+	}
+	s->tasks[task_number] = strdup(c);
+	free(c);
+	return s;
+}
+
+int canRun(STATUS s, char** task){
+	for (int i=3; task[i] != NULL; i++){
+		for(int j =0; j < s->num_filters; j++){
+			if (strcmp(task[i], s ->filters[j]) && s->running[j] +1 > s->max[j]) return 0;
+		}
+				
+	}
+	return 1;
+}
+
+STATUS removeTask(STATUS s, char** task, int task_number){
+	for (int i=3; task[i] != NULL; i++){
+		for(int j =0; j < s->num_filters; j++){
+			if (strcmp(task[i], s ->filters[j])) {
+				s->running[i]--;
+			}
+		}
+	}
+	s->tasks[task_number] = NULL;
 	return s;
 }
 
