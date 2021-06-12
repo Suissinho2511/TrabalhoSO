@@ -25,7 +25,9 @@ typedef struct status {
 
 STATUS newStatus();
 STATUS readStatus(STATUS s, char* conf_filepath);
-
+STATUS addTask(STATUS s, char** task, int task_number);
+STATUS removeTask(STATUS s, int task_number);
+int canRun(STATUS s, char** task);
 
 void sigterm_handler(int signum)
 {
@@ -60,23 +62,21 @@ int main(int argc, char **argv)
 		fflush(stdout);
 		while((bytes_read = readLn(queue_fd, buffer, BUFFER_SIZE)) > 0)
 		{
-			//to be improved:
-			s -> tasks[task_num] = strdup(buffer);
-			task_num++;
-
-			//queue:
 			//pid transform filenameoriginal filenamedestino filtro0 filtro1 ...\n
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			//TODO: Limitar o numero de processos ativos simultaneamente
-			//TODO: Update do status
+			if(canRun(s, parsed))
+				addTask(s, parsed, task_num);		//update Status (add task)
+			else
+				sleep(1); //?
+
 			//server -> Controller -> filho(ffmpeg)
 			if((pid = fork()) == 0)
 			{
 				pid_cliente = atol(parsed[0]);
 				//TODO: encontrar o indice do filtro. Não sei como aplicar o filtro
-				pid = myexec(0, 1, "ffmpeg", parsed); //replaces parsed[0] with bin_name btw
+				pid = myexec(0, 1, "ffmpeg", parsed);
 
 				kill(pid_cliente, SIGUSR1); 		//processing
 				waitpid(pid, &wstatus, 0);		//waits till ffmpeg finishes...
@@ -85,13 +85,22 @@ int main(int argc, char **argv)
 				else					//or
 					kill(pid_cliente, SIGUSR2);	//error
 
+				removeTask(s, task_num);		//update Status (remove task)
 				_exit(0);				//exits
 			}
+
+			task_num++;
 		}
 		memset(parsed, 0, s->num_filters * sizeof(char*)); //a lot of memory leaks xd
 	}
 	return 0;
 }
+
+
+/*
+ * AUX FUNCTIONS:
+ * (need to be reviewed)
+ */
 
 int readLn(int fd, char* buffer, int size)
 {
@@ -143,6 +152,12 @@ int myexec(int in_fd, int out_fd, char* bin_name, char** args)
 	}
 	return pid;
 }
+
+
+/*
+ * STATUS FUNCTIONS:
+ * (need to be reviewed)
+ */
 
 STATUS newStatus()
 {
