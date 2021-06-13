@@ -33,8 +33,9 @@ int main(int argc, char **argv)
 		//status
 		int bytes_read = 0, status_fd = open("status", O_RDONLY);
 		char buffer[BUFFER_SIZE];
-		while((bytes_read = read(status_fd, buffer, BUFFER_SIZE)))
+		while((bytes_read = read(status_fd, buffer, BUFFER_SIZE)) > 0){
 			write(1, buffer, bytes_read);
+		}
 		close(status_fd);
 		return 0;
 	}

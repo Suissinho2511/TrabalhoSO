@@ -193,16 +193,14 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 }
 
 STATUS addTask(STATUS s, char** task, int task_number){
-	for (int i=3; task[i] != NULL; i++){
-		for(int j =0; j < s->num_filters; j++){
+	char *c = malloc(BUFFER_SIZE);
+	for (int i=1; task[i] != NULL; i++){
+		for(int j =0; i > 3 && j < s->num_filters; j++){
 			if (strcmp(task[i], s ->filters[j])) {
 				s->running[i]++;
 			}
+			strcat(c, task[i]);
 		}
-	}
-	char *c = malloc(BUFFER_SIZE);
-	for (int i=1; task[i] != NULL; i++){
-		strcat(c, task[i]);
 	}
 	s->tasks[task_number] = strdup(c);
 	free(c);
@@ -227,7 +225,17 @@ STATUS removeTask(STATUS s, char** task, int task_number){
 			}
 		}
 	}
-	s->tasks[task_number] = NULL;
+	s->tasks[task_number] = " ";
 	return s;
+}
+
+void writeStatus(int fd, STATUS s){
+	lseek(fd, SEEK_SET, 0);
+	for (int i = 0; s->tasks[i] != NULL; i++){
+		if (!strcmp(s->running[i], " ")) write(fd, s->tasks[i], BUFFER_SIZE);
+	}
+	for (int i = 0; i < s->num_filters; i++){
+		//char *c = "filter " + s->filters[i] + ": " + s->running[i] + "/" + s->max[i] + "(running/max)";
+	}
 }
 
