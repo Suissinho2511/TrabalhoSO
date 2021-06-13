@@ -52,6 +52,7 @@ int main(int argc, char **argv)
 
 	STATUS s = newStatus();
 	s = readStatus(s, argv[1]);					//ler o status
+	writeStatus(status_fd, s);
 
 	printf("Server Online (pid: %d)!\n", getpid());
 
@@ -68,8 +69,10 @@ int main(int argc, char **argv)
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			if(canRun(s, parsed))
+			if(canRun(s, parsed)){
 				addTask(s, parsed, task_num);		//update Status (add task)
+				writeStatus(status_fd, s);
+			}
 			else
 				sleep(1); //?
 
@@ -88,6 +91,7 @@ int main(int argc, char **argv)
 					kill(pid_cliente, SIGUSR2);	//error
 
 				removeTask(s, parsed, task_num);		//update Status (remove task)
+				writeStatus(status_fd, s);
 				_exit(0);				//exits
 			}
 
@@ -231,11 +235,17 @@ STATUS removeTask(STATUS s, char** task, int task_number){
 
 void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
+	char *c = malloc(sizeof(char) * BUFFER_SIZE);
 	for (int i = 0; s->tasks[i] != NULL; i++){
-		if (!strcmp(s->running[i], " ")) write(fd, s->tasks[i], BUFFER_SIZE);
+		char str[80];
+		if (!strcmp(s->running[i], " ")) sprintf(str, "Task #%d %s \n", i, s->tasks[i]);
+		strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
-		//char *c = "filter " + s->filters[i] + ": " + s->running[i] + "/" + s->max[i] + "(running/max)";
+		char str[80];
+		sprintf("filter %s: %d/%d (running/max)\n", s->filters[i], s->running[i], s->max[i]);
+		strcat(c, str);
 	}
+	write(fd, c, BUFFER_SIZE);
 }
 
