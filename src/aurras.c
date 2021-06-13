@@ -8,9 +8,8 @@
 #include <stdlib.h>
 
 #define BUFFER_SIZE 1024
-#define QUEUE_NAME "queue"
-#define STATUS_NAME "status"
-
+#define QUEUE_NAME "tmp/queue"
+#define STATUS_NAME "tmp/status"
 int status;
 
 void progress_signal(int signum)

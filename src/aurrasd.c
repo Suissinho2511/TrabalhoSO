@@ -13,6 +13,7 @@
 #define STATUS_NAME "tmp/status"
 
 int readLn(int fd, char* buffer, int size);
+ssize_t readln(int fd, char* line, size_t size);
 int parse(char** parsed, char* buffer, int size, char* delim);
 void freearr(void** pointer, int size);
 int myexec(int in_fd, int out_fd, char* bin_name, char** args);
@@ -47,7 +48,10 @@ int main(int argc, char **argv)
 	char stdout_buffer[BUFFER_SIZE];
 	setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE);		//stdout to Line Buffered
 
-	mkfifo(QUEUE_NAME, 0666);					//create fifo queue
+	if (mkfifo(QUEUE_NAME, 0666) == -1){
+		perror("fifo");
+		return -1;
+	};					//create fifo queue
 	int queue_fd = open(QUEUE_NAME, O_RDONLY);			//open fifo queue
 	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666);	//create status
 
@@ -60,17 +64,13 @@ int main(int argc, char **argv)
 	int bytes_read = 0, size, pid, pid_cliente, wstatus, task_num = 0;
 	char buffer[BUFFER_SIZE];
 	char** parsed = calloc(s->num_filters+4, sizeof(char*));
-	while(run == 1)
+	while((bytes_read = readln(queue_fd, buffer, BUFFER_SIZE)) > 0 && run == 1)
 	{
-		printf("Waiting for request... ");
-		fflush(stdout);
-		while((bytes_read = readLn(queue_fd, buffer, BUFFER_SIZE)) > 0)
-		{
 			//pid transform filenameoriginal filenamedestino filtro0 filtro1 ...\n
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			if(canRun(s, parsed)){
+			if(canRun(s, parsed) == 1){
 				s = addTask(s, parsed, task_num);		//update Status (add task)
 				writeStatus(status_fd, s);
 			}
@@ -97,9 +97,9 @@ int main(int argc, char **argv)
 			}
 
 			task_num++;
-		}
-		memset(parsed, 0, s->num_filters * sizeof(char*)); //a lot of memory leaks xd
+			memset(parsed, 0, s->num_filters * sizeof(char*)); //a lot of memory leaks xd
 	}
+	
 	return 0;
 }
 
@@ -255,16 +255,16 @@ void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
 	int bytes_write = 0;
 	char *c = malloc(sizeof(char) * BUFFER_SIZE);
+	char str[80];
 	for (int i = 0; s->tasks[i] != NULL; i++){
-		char str[80];
 		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(str, "Task #%d %s", i, s->tasks[i]);
 		strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
-		char str[80];
 		bytes_write += sprintf(str, "filter %s: %d/%d (running/max)\n", s->filters[i], s->running[i], s->max[i]);
 		strcat(c, str);
 	}
 	write(fd, c, bytes_write);
+	free(c);
 }
 
