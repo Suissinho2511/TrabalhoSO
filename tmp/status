@@ -1,0 +1,5 @@
+filter alto: 0/2 (running/max)
+filter baixo: 0/2 (running/max)
+filter eco: 0/1 (running/max)
+filter rapido: 0/2 (running/max)
+filter lento: 0/1 (running/max)
