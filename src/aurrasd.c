@@ -9,8 +9,8 @@
 #include <wait.h>
 
 #define BUFFER_SIZE 1024
-#define QUEUE_NAME "../tmp/queue"
-#define STATUS_NAME "../tmp/status"
+#define QUEUE_NAME "tmp/queue"
+#define STATUS_NAME "tmp/status"
 
 int readLn(int fd, char* buffer, int size);
 int parse(char** parsed, char* buffer, int size, char* delim);
@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 
 	mkfifo(QUEUE_NAME, 0666);					//create fifo queue
 	int queue_fd = open(QUEUE_NAME, O_RDONLY);			//open fifo queue
-	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC);	//create status
+	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666);	//create status
 
 	STATUS s = newStatus();
 	s = readStatus(s, argv[1]);					//ler o status
@@ -121,6 +121,17 @@ int readLn(int fd, char* buffer, int size)
 	return bytes_read;
 }
 
+ssize_t readln(int fd, char* line, size_t size) {
+    ssize_t i = 0;
+    while(i < size - 1) {
+        ssize_t bytes_read = read(fd, &line[i], 1);
+        if(bytes_read < 1) break;
+        if(line[i++] == '\n') break;
+    }
+    line[i] = 0;
+    return i;
+}
+
 int parse(char** parsed, char* buffer, int size, char* delim)
 {
 	int i;
@@ -129,7 +140,7 @@ int parse(char** parsed, char* buffer, int size, char* delim)
 	{
 		parsed[i] = strdup(token);
 		token = strtok(NULL, delim);
-		if(!token)
+		if(token == NULL)
 		{
 			parsed[i+1] = NULL;
 			break;
@@ -170,6 +181,11 @@ STATUS newStatus()
 {
 	STATUS r = calloc(1, sizeof(struct status));
 	r -> pid_server = getpid();
+	r->tasks = malloc(sizeof(char *) * 25);
+	r->filters =  malloc(sizeof(char *) * 6);
+	r->filtersT=  malloc(sizeof(char *) * 6);
+	r->max =  malloc(sizeof(int *));
+	r->running =  malloc(sizeof(int *));
 	//TODO: alocar espaço para os arrays
 	return r;
 }
@@ -179,8 +195,9 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 	int conf_fd = open(conf_filepath, O_RDONLY | O_EXCL);	//open conf
 
 	int bytes_read = 0;
-	char buffer[BUFFER_SIZE], parsed[BUFFER_SIZE][BUFFER_SIZE];
-	for(int i = 0; (bytes_read = readLn(conf_fd, buffer, BUFFER_SIZE)) > 0 ; i++)
+	char buffer[BUFFER_SIZE];
+	char **parsed = malloc(sizeof(char *) * 20);
+	for(int i = 0; (bytes_read = readln(conf_fd, buffer, BUFFER_SIZE)) > 0 ; i++)
 	{
 		s -> num_filters ++;
 
@@ -190,7 +207,7 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 		s -> filters[i] = strdup(parsed[0]);
 		s -> filtersT[i] = strdup(parsed[1]);
 		s -> max[i] = atoi(parsed[2]);
-		printf ("--> %s %s %d\n", parsed[0], parsed[1], atoi(parsed[2]));
+		s -> running[i] = 0;
 
 	}
 
@@ -236,17 +253,18 @@ STATUS removeTask(STATUS s, char** task, int task_number){
 
 void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
+	int bytes_write = 0;
 	char *c = malloc(sizeof(char) * BUFFER_SIZE);
 	for (int i = 0; s->tasks[i] != NULL; i++){
 		char str[80];
-		if (strcmp(s->tasks[i], " ") != 0) sprintf(str, "Task #%d %s \n", i, s->tasks[i]);
+		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(str, "Task #%d %s", i, s->tasks[i]);
 		strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
 		char str[80];
-		sprintf("filter %s: %d/%d (running/max)\n", s->filters[i], s->running[i], s->max[i]);
+		bytes_write += sprintf(str, "filter %s: %d/%d (running/max)\n", s->filters[i], s->running[i], s->max[i]);
 		strcat(c, str);
 	}
-	write(fd, c, BUFFER_SIZE);
+	write(fd, c, bytes_write);
 }
 
