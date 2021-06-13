@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
 			if(canRun(s, parsed)){
-				addTask(s, parsed, task_num);		//update Status (add task)
+				s = addTask(s, parsed, task_num);		//update Status (add task)
 				writeStatus(status_fd, s);
 			}
 			else
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
 				else					//or
 					kill(pid_cliente, SIGUSR2);	//error
 
-				removeTask(s, parsed, task_num);		//update Status (remove task)
+				s = removeTask(s, parsed, task_num);		//update Status (remove task)
 				writeStatus(status_fd, s);
 				_exit(0);				//exits
 			}
@@ -180,9 +180,8 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 
 	int bytes_read = 0;
 	char buffer[BUFFER_SIZE], parsed[BUFFER_SIZE][BUFFER_SIZE];
-	for(int i = 0; bytes_read > 0; i++)
+	for(int i = 0; (bytes_read = readLn(conf_fd, buffer, BUFFER_SIZE)) > 0 ; i++)
 	{
-		bytes_read = readLn(conf_fd, buffer, BUFFER_SIZE);
 		s -> num_filters ++;
 
 		//conf:
@@ -190,7 +189,8 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 		parse(parsed, buffer, 1024, " ");
 		s -> filters[i] = strdup(parsed[0]);
 		s -> filtersT[i] = strdup(parsed[1]);
-		s -> max[i] = atol(parsed[2]);
+		s -> max[i] = atoi(parsed[2]);
+		printf ("--> %s %s %d\n", parsed[0], parsed[1], atoi(parsed[2]));
 
 	}
 
