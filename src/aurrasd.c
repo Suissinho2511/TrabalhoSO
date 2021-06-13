@@ -29,6 +29,7 @@ STATUS readStatus(STATUS s, char* conf_filepath);
 STATUS addTask(STATUS s, char** task, int task_number);
 STATUS removeTask(STATUS s, char** task, int task_number);
 int canRun(STATUS s, char** task);
+void writeStatus(int fd, STATUS s);
 
 void sigterm_handler(int signum)
 {
@@ -238,7 +239,7 @@ void writeStatus(int fd, STATUS s){
 	char *c = malloc(sizeof(char) * BUFFER_SIZE);
 	for (int i = 0; s->tasks[i] != NULL; i++){
 		char str[80];
-		if (!strcmp(s->running[i], " ")) sprintf(str, "Task #%d %s \n", i, s->tasks[i]);
+		if (strcmp(s->tasks[i], " ") != 0) sprintf(str, "Task #%d %s \n", i, s->tasks[i]);
 		strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
