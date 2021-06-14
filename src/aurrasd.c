@@ -30,7 +30,7 @@ STATUS newStatus();
 STATUS readStatus(STATUS s, char* conf_filepath);
 STATUS addTask(STATUS s, char** task, int task_number);
 STATUS removeTask(STATUS s, char** task, int task_number);
-int canRun(STATUS s, char** task);
+int canRun(struct status s, char** task);
 void writeStatus(int fd, STATUS s);
 
 void sigterm_handler(int signum)
@@ -78,9 +78,9 @@ int main(int argc, char **argv)
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			/*while(!canRun(s, parsed)){
+			while(!canRun((*s), parsed)){
 				sleep(1);
-			}*/
+			}
 			s = addTask(s, parsed, task_num);			//update Status (add task)
 			//writeStatus(status_fd, s);				//write Status
 
@@ -206,6 +206,7 @@ int findIndex(char** array, char* string, int size)
 	int i;
 	for(i = 0; i < size; i++)
 	{
+		printf("%s %s\n",array[i], string);
 		if(strcmp(array[i], string) == 0) return i;
 	}
 	return -1;
@@ -269,14 +270,12 @@ STATUS addTask(STATUS s, char** task, int task_number){
 	return s;
 }
 
-int canRun(STATUS s, char** task){
-	for (int i=3; task[i] != NULL; i++){
-		for(int j =0; j < s->num_filters; j++){
-			if (strcmp(task[i], s ->filtersT[j]) && (s->running[j]++) > s->max[j]) return 0;
-		}
-				
-	}
-	return 1;
+int canRun(struct status s, char** task){
+    for (int i=4; task[i] != NULL; i++){
+        int index_filtro = findIndex(s.filters, task[i], s.num_filters);
+        if (s.running[index_filtro]++ > s.max[index_filtro]) return 0;
+    }
+    return 1;
 }
 
 STATUS removeTask(STATUS s, char** task, int task_number){
@@ -295,9 +294,9 @@ void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
 	int bytes_write = 0;
 	char c[BUFFER_SIZE];
-	char str[80];
+	char str[BUFFER_SIZE];
 	for (int i = 0; s->tasks[i] != NULL; i++){
-		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(str, "Task #%d %s", i, s->tasks[i]);
+		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(str, "Task #%d %s\n", i, s->tasks[i]);
 		strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
