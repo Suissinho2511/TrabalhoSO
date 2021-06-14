@@ -78,11 +78,11 @@ int main(int argc, char **argv)
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			while(!canRun(s, parsed)){
+			/*while(!canRun(s, parsed)){
 				sleep(1);
-			}
+			}*/
 			s = addTask(s, parsed, task_num);			//update Status (add task)
-			writeStatus(status_fd, s);				//write Status
+			//writeStatus(status_fd, s);				//write Status
 
 			//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 			if((pid = fork()) == 0)
@@ -91,12 +91,13 @@ int main(int argc, char **argv)
 				pid_cliente = atol(parsed[0]);
 				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
 				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
+				pid = myexec(input_fd, output_fd, parsed, s->num_filters);
 
 				for(filtro_atual = 0; filtro_atual < size-3; filtro_atual++)
 				{
 					index_filtro = findIndex(s->filters, parsed[4+filtro_atual], s->num_filters);
 					//bin_name = s->filtersT[index_filtro];
-					pid = myexec(input_fd, output_fd, parsed, s->num_filters);
+					
 				}
 
 				kill(pid_cliente, SIGUSR1); 			//processing

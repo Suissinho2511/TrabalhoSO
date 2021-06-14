@@ -30,7 +30,7 @@ int main(int argc, char **argv)
 	if(strcmp(argv[1], "status") == 0)
 	{
 		//status
-		int bytes_read, status_fd = open("status", O_RDONLY);
+		int bytes_read, status_fd = open(STATUS_NAME, O_RDONLY);
 		char buffer[BUFFER_SIZE];
 		while((bytes_read = read(status_fd, buffer, BUFFER_SIZE)) > 0){
 			write(1, buffer, bytes_read);
