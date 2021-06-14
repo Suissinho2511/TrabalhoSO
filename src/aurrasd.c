@@ -16,7 +16,7 @@ int readLn(int fd, char* buffer, int size);
 ssize_t readln(int fd, char* line, size_t size);
 int parse(char** parsed, char* buffer, int size, char* delim);
 void freearr(void** pointer, int size);
-int myexec(int in_fd, int out_fd, char** args);
+int myexec(int in_fd, int out_fd, char** args, int num);
 
 typedef struct status {
 	int pid_server, num_filters;
@@ -83,7 +83,7 @@ int main(int argc, char **argv)
 			{
 				pid_cliente = atol(parsed[0]);
 				//TODO: encontrar o indice do filtro. Não sei como aplicar o filtro
-				pid = myexec(0, 1, parsed);
+				pid = myexec(0, 1, parsed, s ->num_filters);
 
 				kill(pid_cliente, SIGUSR1); 		//processing
 				waitpid(pid, &wstatus, 0);		//waits till ffmpeg finishes...
@@ -158,7 +158,7 @@ void freearr(void** pointer, int size)
 	return;
 }
 
-int myexec(int in_fd, int out_fd, char** args)
+int myexec(int in_fd, int out_fd, char** args, int num)
 {
 	int pid;
 	if((pid = fork()) == 0)
@@ -166,10 +166,20 @@ int myexec(int in_fd, int out_fd, char** args)
 		//filho
 		dup2(in_fd, 0);
 		dup2(out_fd, 1);
-		char str[100];
-		sprintf(str,"%s %s < %s > %s\n", args[4],args[4], args[2], args[3]);
-		printf("%s",str);
-		execl(args[4], args[4], "<", args[2], ">", args[3], NULL);
+		char **str = malloc(sizeof(char *) * 15);
+		int i = 0;
+		str[i++] = strdup(args[4]);
+		str[i++] = strdup("<");
+		str[i++] = strdup(args[2]);
+		for (int x = 5; x < 4 + num; x++){
+			str[i++] = strdup("|");
+			str[i++] = strdup(args[x]);
+		}
+		str[i++] = strdup(">");
+		str[i++] = strdup(args[3]);
+		str[i] = NULL;
+		for (int x = 0; x < i; x++) printf("%s ",str[x]);
+		execvp(args[4], str);
 	}
 	return pid;
 }
@@ -221,7 +231,7 @@ STATUS addTask(STATUS s, char** task, int task_number){
 	char *c = malloc(BUFFER_SIZE);
 	for (int i=1; task[i] != NULL; i++){
 		for(int j =0; i > 3 && j < s->num_filters; j++){
-			if (strcmp(task[i], s ->filters[j])) {
+			if (strcmp(task[i], s ->filtersT[j])) {
 				s->running[i]++;
 			}
 			strcat(c, task[i]);
