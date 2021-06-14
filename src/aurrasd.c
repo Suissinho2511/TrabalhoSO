@@ -43,64 +43,79 @@ void sigterm_handler(int signum)
 
 int main(int argc, char **argv)
 {
-	signal(SIGTERM, sigterm_handler);				//Handling sigterm to slowly close server
+	signal(SIGTERM, sigterm_handler);					//Handling sigterm to slowly close server
 
 	char stdout_buffer[BUFFER_SIZE];
-	setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE);		//stdout to Line Buffered
+	setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE);			//stdout to Line Buffered
 
-	if (mkfifo(QUEUE_NAME, 0666) == -1){
+	//=============================================Files & Variables=================================================//
+
+	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666);	//create status
+	STATUS s = newStatus();
+	s = readStatus(s, argv[1]);						//ler o status
+	writeStatus(status_fd, s);						//escrever o status
+
+	if (mkfifo(QUEUE_NAME, 0666) == -1){					//create fifo queue
 		perror("fifo");
 		return -1;
-	};					//create fifo queue
-	int queue_fd = open(QUEUE_NAME, O_RDONLY);			//open fifo queue
-	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666);	//create status
-
-	STATUS s = newStatus();
-	s = readStatus(s, argv[1]);					//ler o status
-	writeStatus(status_fd, s);
-
-	printf("Server Online (pid: %d)!\n", getpid());
+	};
+	int queue_fd = open(QUEUE_NAME, O_RDONLY);				//open fifo queue
 
 	int bytes_read = 0, size, pid, pid_cliente, wstatus, task_num = 0;
 	char buffer[BUFFER_SIZE];
 	char** parsed = calloc(s->num_filters+4, sizeof(char*));
-	while((bytes_read = readln(queue_fd, buffer, BUFFER_SIZE)) > 0 && run == 1)
+
+	printf("Server Online (pid: %d)!\n", getpid());
+
+	//=====================================================Loop======================================================//
+
+	while(run == 1)
 	{
+		while((bytes_read = readln(queue_fd, buffer, BUFFER_SIZE)) > 0 && run == 1)
+		{
 			//pid transform filenameoriginal filenamedestino filtro0 filtro1 ...\n
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			if(canRun(s, parsed) == 1){
-				s = addTask(s, parsed, task_num);		//update Status (add task)
-				//writeStatus(status_fd, s);
+			while(!canRun(s, parsed)){
+				sleep(1);
 			}
-			else{
-				printf("\rRequest (pid: %s) cannot be handle.\n", parsed[0]);
-				//sleep(1); //?
-			}
-			//server -> Controller -> filho(ffmpeg)
+			s = addTask(s, parsed, task_num);			//update Status (add task)
+			writeStatus(status_fd, s);				//write Status
+
+			//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 			if((pid = fork()) == 0)
 			{
+				int filtro_atual, index_filtro;
 				pid_cliente = atol(parsed[0]);
-				//TODO: encontrar o indice do filtro. Não sei como aplicar o filtro
-				pid = myexec(0, 1, parsed, s ->num_filters);
+				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
+				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
 
-				kill(pid_cliente, SIGUSR1); 		//processing
-				waitpid(pid, &wstatus, 0);		//waits till ffmpeg finishes...
+				for(filtro_atual = 0; filtro_atual < size-3; i++)
+				{
+					index_filtro = findIndex(s->filters, &parsed[4+filtro_atual], s->num_filters);
+					//bin_name = s->filtersT[index_filtro];
+					pid = myexec(input_fd, output_fd, parsed, s->num_filters);
+				}
+
+				kill(pid_cliente, SIGUSR1); 			//processing
+				waitpid(pid, &wstatus, 0);			//waits till ffmpeg finishes...
 				if(WIFEXITED(wstatus))
-					kill(pid_cliente, SIGUSR1); 	//finished
-				else					//or
-					kill(pid_cliente, SIGUSR2);	//error
+					kill(pid_cliente, SIGUSR1); 		//finished
+				else						//or
+					kill(pid_cliente, SIGUSR2);		//error
 
 				s = removeTask(s, parsed, task_num);		//update Status (remove task)
 				writeStatus(status_fd, s);
-				_exit(0);				//exits
+				_exit(0);					//exits
 			}
 
 			task_num++;
-			memset(parsed, 0, s->num_filters * sizeof(char*)); //a lot of memory leaks xd
+			freearr(parsed, size);
+			memset(parsed, 0, size * sizeof(char*));
+		}
 	}
-	
+
 	return 0;
 }
 
@@ -154,7 +169,7 @@ int parse(char** parsed, char* buffer, int size, char* delim)
 void freearr(void** pointer, int size)
 {
 	for(int i = 0; i < size; i++) free(pointer[i]);
-	free(pointer);
+	//free(pointer);
 	return;
 }
 
@@ -184,6 +199,16 @@ int myexec(int in_fd, int out_fd, char** args, int num)
 	return pid;
 }
 
+int findIndex(char** array, char* string, int size)
+{
+	int i;
+	for(i = 0; i < size; i++)
+	{
+		if(strcmp(array[i], string) == 0) return i;
+	}
+	return -1;
+}
+
 
 /*
  * STATUS FUNCTIONS:
@@ -194,11 +219,6 @@ STATUS newStatus()
 {
 	STATUS r = calloc(1, sizeof(struct status));
 	r -> pid_server = getpid();
-	r->tasks = malloc(sizeof(char *) * 25);
-	r->filters =  malloc(sizeof(char *) * 6);
-	r->filtersT=  malloc(sizeof(char *) * 6);
-	r->max =  malloc(sizeof(int *));
-	r->running =  malloc(sizeof(int *));
 	//TODO: alocar espaço para os arrays
 	return r;
 }
