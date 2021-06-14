@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 				//writeStatus(status_fd, s);
 			}
 			else{
-				printf("\rRequest (pid: %s) cannot be handle.\n", parsed[0]);
+				//printf("\rRequest (pid: %s) cannot be handle.\n", parsed[0]);
 				//sleep(1); //?
 			}
 			//server -> Controller -> filho(ffmpeg)
@@ -166,7 +166,7 @@ int myexec(int in_fd, int out_fd, char** args, int num)
 		//filho
 		dup2(in_fd, 0);
 		dup2(out_fd, 1);
-		char **str = malloc(sizeof(char *) * 15);
+		/*char **str = malloc(sizeof(char *) * 15);
 		int i = 0;
 		str[i++] = strdup(args[4]);
 		str[i++] = strdup("<");
@@ -179,7 +179,8 @@ int myexec(int in_fd, int out_fd, char** args, int num)
 		str[i++] = strdup(args[3]);
 		str[i] = NULL;
 		for (int x = 0; x < i; x++) printf("%s ",str[x]);
-		execvp(args[4], str);
+		execvp(args[4], str);*/
+		execl(args[4], args[4], "<", args[2], ">" ,args[3], NULL);
 	}
 	return pid;
 }
