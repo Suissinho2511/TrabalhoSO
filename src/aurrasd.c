@@ -17,6 +17,7 @@ ssize_t readln(int fd, char* line, size_t size);
 int parse(char** parsed, char* buffer, int size, char* delim);
 void freearr(void** pointer, int size);
 int myexec(int in_fd, int out_fd, char** args, int num);
+int findIndex(char** array, char* string, int size);
 
 typedef struct status {
 	int pid_server, num_filters;
@@ -91,9 +92,9 @@ int main(int argc, char **argv)
 				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
 				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
 
-				for(filtro_atual = 0; filtro_atual < size-3; i++)
+				for(filtro_atual = 0; filtro_atual < size-3; filtro_atual++)
 				{
-					index_filtro = findIndex(s->filters, &parsed[4+filtro_atual], s->num_filters);
+					index_filtro = findIndex(s->filters, parsed[4+filtro_atual], s->num_filters);
 					//bin_name = s->filtersT[index_filtro];
 					pid = myexec(input_fd, output_fd, parsed, s->num_filters);
 				}
@@ -111,7 +112,7 @@ int main(int argc, char **argv)
 			}
 
 			task_num++;
-			freearr(parsed, size);
+			freearr((void **)parsed, size);
 			memset(parsed, 0, size * sizeof(char*));
 		}
 	}
@@ -181,7 +182,7 @@ int myexec(int in_fd, int out_fd, char** args, int num)
 		//filho
 		dup2(in_fd, 0);
 		dup2(out_fd, 1);
-		char **str = malloc(sizeof(char *) * 15);
+		/*char **str = malloc(sizeof(char *) * 15);
 		int i = 0;
 		str[i++] = strdup(args[4]);
 		str[i++] = strdup("<");
@@ -193,8 +194,8 @@ int myexec(int in_fd, int out_fd, char** args, int num)
 		str[i++] = strdup(">");
 		str[i++] = strdup(args[3]);
 		str[i] = NULL;
-		for (int x = 0; x < i; x++) printf("%s ",str[x]);
-		execvp(args[4], str);
+		for (int x = 0; x < i; x++) printf("%s ",str[x]);*/
+		execl(args[4], args[4], NULL);
 	}
 	return pid;
 }
