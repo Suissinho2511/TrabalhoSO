@@ -220,6 +220,11 @@ STATUS newStatus()
 	STATUS r = calloc(1, sizeof(struct status));
 	r -> pid_server = getpid();
 	//TODO: alocar espaço para os arrays
+	r->tasks = malloc(sizeof(char *) * 25);
+	r->filters =  malloc(sizeof(char *) * 6);
+	r->filtersT=  malloc(sizeof(char *) * 6);
+	r->max =  malloc(sizeof(int *));
+	r->running =  malloc(sizeof(int *));
 	return r;
 }
 
