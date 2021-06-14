@@ -16,7 +16,7 @@ int readLn(int fd, char* buffer, int size);
 ssize_t readln(int fd, char* line, size_t size);
 int parse(char** parsed, char* buffer, int size, char* delim);
 void freearr(void** pointer, int size);
-int myexec(int in_fd, int out_fd, char* bin_name, char** args);
+int myexec(int in_fd, int out_fd, char** args);
 
 typedef struct status {
 	int pid_server, num_filters;
@@ -72,17 +72,18 @@ int main(int argc, char **argv)
 
 			if(canRun(s, parsed) == 1){
 				s = addTask(s, parsed, task_num);		//update Status (add task)
-				writeStatus(status_fd, s);
+				//writeStatus(status_fd, s);
 			}
-			else
-				sleep(1); //?
-
+			else{
+				printf("\rRequest (pid: %s) cannot be handle.\n", parsed[0]);
+				//sleep(1); //?
+			}
 			//server -> Controller -> filho(ffmpeg)
 			if((pid = fork()) == 0)
 			{
 				pid_cliente = atol(parsed[0]);
 				//TODO: encontrar o indice do filtro. Não sei como aplicar o filtro
-				pid = myexec(0, 1, "ffmpeg", parsed);
+				pid = myexec(0, 1, parsed);
 
 				kill(pid_cliente, SIGUSR1); 		//processing
 				waitpid(pid, &wstatus, 0);		//waits till ffmpeg finishes...
@@ -157,16 +158,18 @@ void freearr(void** pointer, int size)
 	return;
 }
 
-int myexec(int in_fd, int out_fd, char* bin_name, char** args)
+int myexec(int in_fd, int out_fd, char** args)
 {
 	int pid;
 	if((pid = fork()) == 0)
 	{
 		//filho
-		args[0] = bin_name;
 		dup2(in_fd, 0);
 		dup2(out_fd, 1);
-		execvp(bin_name, args);
+		char str[100];
+		sprintf(str,"%s %s < %s > %s\n", args[4],args[4], args[2], args[3]);
+		printf("%s",str);
+		execl(args[4], args[4], "<", args[2], ">", args[3], NULL);
 	}
 	return pid;
 }
@@ -232,7 +235,7 @@ STATUS addTask(STATUS s, char** task, int task_number){
 int canRun(STATUS s, char** task){
 	for (int i=3; task[i] != NULL; i++){
 		for(int j =0; j < s->num_filters; j++){
-			if (strcmp(task[i], s ->filters[j]) && s->running[j] +1 > s->max[j]) return 0;
+			if (strcmp(task[i], s ->filtersT[j]) && (s->running[j]++) > s->max[j]) return 0;
 		}
 				
 	}
@@ -254,7 +257,7 @@ STATUS removeTask(STATUS s, char** task, int task_number){
 void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
 	int bytes_write = 0;
-	char *c = malloc(sizeof(char) * BUFFER_SIZE);
+	char c[BUFFER_SIZE];
 	char str[80];
 	for (int i = 0; s->tasks[i] != NULL; i++){
 		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(str, "Task #%d %s", i, s->tasks[i]);
@@ -265,6 +268,5 @@ void writeStatus(int fd, STATUS s){
 		strcat(c, str);
 	}
 	write(fd, c, bytes_write);
-	free(c);
 }
 
