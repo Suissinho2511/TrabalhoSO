@@ -78,11 +78,12 @@ int main(int argc, char **argv)
 			size = parse(parsed, buffer, s->num_filters, " ");
 			printf("\rRequest received (pid: %s).\n", parsed[0]);
 
-			while(canRun((*s), parsed) == 0){
+			/*while(canRun((*s), parsed) == 0){
 				sleep(1);
-			}
+			}*/
 			s = addTask(s, parsed, task_num);			//update Status (add task)
-			//writeStatus(status_fd, s);				//write Status
+			writeStatus(status_fd, s);				//write Status
+			sleep(10);
 
 			//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 			if((pid = fork()) == 0)
@@ -92,6 +93,7 @@ int main(int argc, char **argv)
 				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
 				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
 				pid = myexec(input_fd, output_fd, parsed, s);
+				
 
 				/*for(filtro_atual = 0; filtro_atual < size-3; filtro_atual++)
 				{
@@ -181,24 +183,11 @@ int myexec(int in_fd, int out_fd, char** args, STATUS s)
 	if((pid = fork()) == 0)
 	{
 		//filho
-		//dup2(in_fd, 0);
-		//dup2(out_fd, 1);
-		/*char **str = malloc(sizeof(char *) * 15);
-		int i = 0;
-		str[i++] = strdup(args[4]);
-		str[i++] = strdup("<");
-		str[i++] = strdup(args[2]);
-		for (int x = 5; x < 4 + num; x++){
-			str[i++] = strdup("|");
-			str[i++] = strdup(args[x]);
-		}
-		str[i++] = strdup(">");
-		str[i++] = strdup(args[3]);
-		str[i] = NULL;
-		for (int x = 0; x < i; x++) printf("%s ",str[x]);*/
-		//sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
-		//execl(args[4], args[4], NULL);
-		int x = 4, num = s->num_filters, end, i;
+		dup2(in_fd, 0);
+		dup2(out_fd, 1);
+		sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
+		execl(args[4], args[4], NULL);
+		/*int x = 4, num = s->num_filters, end, i;
 		int pd[num -1][2];
 		for (i = 0; i < num; i++){
 			if (i==0){
@@ -247,7 +236,7 @@ int myexec(int in_fd, int out_fd, char** args, STATUS s)
 		}
 		for (end =0; end < i; end++){
 			wait(NULL);
-		}
+		}*/
 	}
 	return pid;
 }
@@ -306,17 +295,16 @@ STATUS readStatus(STATUS s, char* conf_filepath)
 }
 
 STATUS addTask(STATUS s, char** task, int task_number){
-	char *c = malloc(BUFFER_SIZE);
+	char c[BUFFER_SIZE] = "";
 	for (int i=1; task[i] != NULL; i++){
 		for(int j =0; i > 3 && j < s->num_filters; j++){
-			if (strcmp(task[i], s ->filters[j])) {
-				s->running[i]++;
+			if (strcmp(task[i], s ->filters[j]) == 0) {
+				s->running[j]++;
 			}
-			strcat(c, task[i]);
 		}
+		sprintf(c, "%s %s", c, task[i]);
 	}
 	s->tasks[task_number] = strdup(c);
-	free(c);
 	return s;
 }
 
@@ -329,10 +317,10 @@ int canRun(struct status s, char** task){
 }
 
 STATUS removeTask(STATUS s, char** task, int task_number){
-	for (int i=3; task[i] != NULL; i++){
+	for (int i=4; task[i] != NULL; i++){
 		for(int j =0; j < s->num_filters; j++){
-			if (strcmp(task[i], s ->filters[j])) {
-				s->running[i]--;
+			if (strcmp(task[i], s ->filters[j]) == 0) {
+				s->running[j]--;
 			}
 		}
 	}
@@ -343,15 +331,15 @@ STATUS removeTask(STATUS s, char** task, int task_number){
 void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
 	int bytes_write = 0;
-	char c[BUFFER_SIZE];
+	char c[BUFFER_SIZE] = "";
 	char str[BUFFER_SIZE];
 	for (int i = 0; s->tasks[i] != NULL; i++){
-		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(str, "Task #%d %s\n", i, s->tasks[i]);
-		strcat(c, str);
+		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
+		//strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
-		bytes_write += sprintf(str, "filter %s: %d/%d (running/max)\n", s->filters[i], s->running[i], s->max[i]);
-		strcat(c, str);
+		bytes_write += sprintf(c, "%sfilter %s: %d/%d (running/max)\n", c, s->filters[i], s->running[i], s->max[i]);
+		//strcat(c, str);
 	}
 	write(fd, c, bytes_write);
 }
