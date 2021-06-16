@@ -43,7 +43,7 @@ int canRun(struct status s, char **task);
 
 void writeStatus(int fd, STATUS s);
 
-int myexec(int in_fd, int out_fd, char **args, STATUS s);
+int myexec(int in_fd, int out_fd, char **args, int size,STATUS s);
 
 STATUS status_clone(STATUS s);
 
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
 				int filtro_atual, index_filtro;
 				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
 				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
-				pid = myexec(input_fd, output_fd, parsed, s);
+				pid = myexec(input_fd, output_fd, parsed, size, s);
 
 				/*for(filtro_atual = 0; filtro_atual < size-3; filtro_atual++)
 				{
@@ -196,9 +196,10 @@ void freearr(void **pointer, int size)
 	return;
 }
 
-int myexec(int in_fd, int out_fd, char **args, STATUS s)
+int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 {
 	int pid;
+	char bin_name[BUFFER_SIZE];
 
 	if ((pid = fork()) == 0)
 	{
@@ -208,7 +209,7 @@ int myexec(int in_fd, int out_fd, char **args, STATUS s)
 
 		//sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
 		//execl(args[4], args[4], NULL);
-		int x = 4, num = s->num_filters, end, i;
+		int x = 4, num = size-4, end, i;
 		int pd[num - 1][2];
 		for (i = 0; i < num; i++)
 		{
@@ -221,8 +222,8 @@ int myexec(int in_fd, int out_fd, char **args, STATUS s)
 					close(pd[i][0]);
 					dup2(pd[i][1], out_fd);
 					close(pd[i][1]);
-					sprintf(args[x], "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
-					execl(args[x], args[x], NULL);
+					sprintf(bin_name, "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
+					execl(bin_name, bin_name, NULL);
 					_exit(0);
 				}
 				else
@@ -233,11 +234,11 @@ int myexec(int in_fd, int out_fd, char **args, STATUS s)
 			{
 				if (fork() == 0)
 				{
-					dup2(pd[i][0], in_fd);
-					close(pd[i][0]);
+					dup2(pd[i-1][0], in_fd);
+					close(pd[i-1][0]);
 					x++;
-					sprintf(args[x], "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
-					execl(args[x], args[x], NULL);
+					sprintf(bin_name, "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
+					execl(bin_name, bin_name, NULL);
 					_exit(0);
 				}
 				else
@@ -253,8 +254,8 @@ int myexec(int in_fd, int out_fd, char **args, STATUS s)
 					dup2(pd[i - 1][0], in_fd);
 					close(pd[i - 1][0]);
 					x++;
-					sprintf(args[x], "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
-					execl(args[x], args[x], NULL);
+					sprintf(bin_name, "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
+					execl(bin_name, bin_name, NULL);
 					_exit(0);
 				}
 				else
