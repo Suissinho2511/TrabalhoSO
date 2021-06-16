@@ -15,9 +15,21 @@ int status;
 void progress_signal(int signum)
 {
 	status++;
-	if (status == 1) {printf("pending\n"); pause();}
-	if (status == 2) {printf("processing\n"); pause();}
-	if (status == 3) {printf("finished!\n"); alarm(1);}
+	if (status == 1)
+	{
+		printf("pending\n");
+		pause();
+	}
+	if (status == 2)
+	{
+		printf("processing\n");
+		pause();
+	}
+	if (status == 3)
+	{
+		printf("finished!\n");
+		alarm(1);
+	}
 }
 void error_signal(int signum)
 {
@@ -27,12 +39,13 @@ void error_signal(int signum)
 int main(int argc, char **argv)
 {
 
-	if(strcmp(argv[1], "status") == 0)
+	if (strcmp(argv[1], "status") == 0)
 	{
 		//status
 		int bytes_read, status_fd = open(STATUS_NAME, O_RDONLY);
 		char buffer[BUFFER_SIZE];
-		while((bytes_read = read(status_fd, buffer, BUFFER_SIZE)) > 0){
+		while ((bytes_read = read(status_fd, buffer, BUFFER_SIZE)) > 0)
+		{
 			write(1, buffer, bytes_read);
 		}
 		close(status_fd);
@@ -61,19 +74,21 @@ int main(int argc, char **argv)
 		char buffer[1024];
 
 		size += sprintf(buffer, "%d ", getpid());
-		for ( int i = 1; i < argc; i++)
+		for (int i = 1; i < argc; i++)
 		{
-			size += sprintf(&buffer[size],"%s ", argv[i]);
+			size += sprintf(&buffer[size], "%s ", argv[i]);
 		}
 		buffer[size] = '\n';
-		write(queue_fd, buffer, size+1);
+		write(queue_fd, buffer, size + 1);
 
 		pause();
 
 		close(queue_fd);
 		return 1;
-	} else {
-		printf("Operation not recognized: %s\n",argv[1]);
+	}
+	else
+	{
+		printf("Operation not recognized: %s\n", argv[1]);
 		return -1;
 	}
 }
