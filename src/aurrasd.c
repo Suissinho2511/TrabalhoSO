@@ -32,6 +32,7 @@ STATUS removeTask(STATUS s, char** task, int task_number);
 int canRun(struct status s, char** task);
 void writeStatus(int fd, STATUS s);
 int myexec(int in_fd, int out_fd, char** args, STATUS s);
+STATUS status_clone(STATUS s);
 
 void sigterm_handler(int signum)
 {
@@ -76,20 +77,21 @@ int main(int argc, char **argv)
 		{
 			//pid transform filenameoriginal filenamedestino filtro0 filtro1 ...\n
 			size = parse(parsed, buffer, s->num_filters, " ");
-			printf("\rRequest received (pid: %s).\n", parsed[0]);
+			pid_cliente = atoi(parsed[0]);
+			printf("\rRequest received (pid: %d).\n",pid_cliente);
 
 			/*while(canRun((*s), parsed) == 0){
 				sleep(1);
 			}*/
+			STATUS clone = status_clone(s);
 			s = addTask(s, parsed, task_num);			//update Status (add task)
-			writeStatus(status_fd, s);				//write Status
-			sleep(10);
+			//writeStatus(status_fd, s);				//write Status
+			//kill(pid_cliente, SIGUSR1); 
 
 			//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 			if((pid = fork()) == 0)
 			{
 				int filtro_atual, index_filtro;
-				pid_cliente = atol(parsed[0]);
 				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
 				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
 				pid = myexec(input_fd, output_fd, parsed, s);
@@ -101,7 +103,6 @@ int main(int argc, char **argv)
 					//bin_name = s->filtersT[index_filtro];
 					
 				}*/
-
 				kill(pid_cliente, SIGUSR1); 			//processing
 				waitpid(pid, &wstatus, 0);			//waits till ffmpeg finishes...
 				if(WIFEXITED(wstatus))
@@ -109,8 +110,8 @@ int main(int argc, char **argv)
 				else						//or
 					kill(pid_cliente, SIGUSR2);		//error
 
-				s = removeTask(s, parsed, task_num);		//update Status (remove task)
-				writeStatus(status_fd, s);
+				//s = removeTask(s, parsed, task_num);		//update Status (remove task)
+				//writeStatus(status_fd, clone);
 				_exit(0);					//exits
 			}
 
@@ -180,32 +181,33 @@ void freearr(void** pointer, int size)
 int myexec(int in_fd, int out_fd, char** args, STATUS s)
 {
 	int pid;
+	
 	if((pid = fork()) == 0)
 	{
 		//filho
 		dup2(in_fd, 0);
 		dup2(out_fd, 1);
-		sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
-		execl(args[4], args[4], NULL);
-		/*int x = 4, num = s->num_filters, end, i;
+		
+		//sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
+		//execl(args[4], args[4], NULL);
+		int x = 4, num = s->num_filters, end, i;
 		int pd[num -1][2];
 		for (i = 0; i < num; i++){
 			if (i==0){
-				pipe(pd[0]);
+				pipe(pd[i]);
 				if (fork() ==0){
-					dup2(pd[0][0], in_fd);
-					close(pd[0][0]);
-					dup2(pd[0][1], out_fd);
-					close(pd[0][1]);
+					//dup2(pd[i][0], in_fd);
+					close(pd[i][0]);
+					dup2(pd[i][1], out_fd);
+					close(pd[i][1]);
 					sprintf(args[x],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
-					printf("%s\n",args[x]);
 					execl(args[x], args[x], NULL);
 					_exit(0);
 				}
     			else close(pd[i][1]);
 			}
 
-			if (i==num -1){
+			else if (i==num -1){
 				if (fork()==0){
 					dup2(pd[i][0], in_fd);
 					close(pd[i][0]);
@@ -236,7 +238,7 @@ int myexec(int in_fd, int out_fd, char** args, STATUS s)
 		}
 		for (end =0; end < i; end++){
 			wait(NULL);
-		}*/
+		}
 	}
 	return pid;
 }
@@ -332,9 +334,8 @@ void writeStatus(int fd, STATUS s){
 	lseek(fd, SEEK_SET, 0);
 	int bytes_write = 0;
 	char c[BUFFER_SIZE] = "";
-	char str[BUFFER_SIZE];
 	for (int i = 0; s->tasks[i] != NULL; i++){
-		if (strcmp(s->tasks[i], " ") != 0) bytes_write += sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
+		if (s->tasks[i] != NULL) bytes_write += sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
 		//strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++){
@@ -342,5 +343,22 @@ void writeStatus(int fd, STATUS s){
 		//strcat(c, str);
 	}
 	write(fd, c, bytes_write);
+}
+
+STATUS status_clone(STATUS s){
+	STATUS clone = malloc(sizeof(struct status));
+	clone->tasks = malloc(sizeof(char *) * 25);
+	clone->filters =  malloc(sizeof(char *) * 6);
+	clone->filtersT=  malloc(sizeof(char *) * 6);
+	clone->max =  malloc(sizeof(int *));
+	clone->running =  malloc(sizeof(int *));
+	for (int i = 0; i < s->num_filters; i++){
+		clone->filters[i] = strdup(s->filters[i]);
+		clone->filtersT[i] = strdup(s->filtersT[i]);
+		clone->max[i] = s->max[i];
+		clone->running[i] = s->running[i];
+		if (s->tasks[i] != NULL) clone->tasks[i] = strdup(s->tasks[i]);
+	}
+	return clone;
 }
 
