@@ -65,10 +65,10 @@ int main(int argc, char **argv)
 
 	//=============================================Files & Variables=================================================//
 
-	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666); //create status
+	//int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666); //create status
 	STATUS s = newStatus();
 	s = readStatus(s, argv[1]); //ler o status
-	writeStatus(status_fd, s);	//escrever o status
+	writeStatus(5, s);	//escrever o status
 
 	if (mkfifo(QUEUE_NAME, 0666) == -1)
 	{ //create fifo queue
@@ -99,8 +99,8 @@ int main(int argc, char **argv)
 			}*/
 			STATUS clone = status_clone(s);
 			s = addTask(s, parsed, task_num); //update Status (add task)
-			//writeStatus(status_fd, s);				//write Status
-			//kill(pid_cliente, SIGUSR1);
+			writeStatus(5, s);				//write Status
+			kill(pid_cliente, SIGUSR1);
 
 			//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 			if ((pid = fork()) == 0)
@@ -387,21 +387,20 @@ STATUS removeTask(STATUS s, char **task, int task_number)
 
 void writeStatus(int fd, STATUS s)
 {
-	lseek(fd, SEEK_SET, 0);
+	int status_fd = open(STATUS_NAME, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 	int bytes_write = 0;
 	char c[BUFFER_SIZE] = "";
 	for (int i = 0; s->tasks[i] != NULL; i++)
 	{
 		if (s->tasks[i] != NULL)
 			bytes_write += sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
-		//strcat(c, str);
 	}
 	for (int i = 0; i < s->num_filters; i++)
 	{
 		bytes_write += sprintf(c, "%sfilter %s: %d/%d (running/max)\n", c, s->filters[i], s->running[i], s->max[i]);
-		//strcat(c, str);
 	}
-	write(fd, c, bytes_write);
+	write(status_fd, c, bytes_write);
+	close(status_fd);
 }
 
 STATUS status_clone(STATUS s)
