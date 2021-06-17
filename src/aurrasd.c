@@ -34,7 +34,6 @@ int run = 1;
 
 STATUS newStatus(char *conf_filepath);
 
-STATUS readStatus(STATUS s, char *conf_filepath);
 
 STATUS addTask(STATUS s, char **task, int task_number);
 
@@ -42,7 +41,7 @@ STATUS removeTask(STATUS s, char **task, int task_number);
 
 int canRun(struct status s, char **task);
 
-void writeStatus(int fd, STATUS s);
+void writeStatus(int fd, STATUS s, int pid);
 
 int myexec(int in_fd, int out_fd, char **args, int size,STATUS s);
 
@@ -63,10 +62,10 @@ int main(int argc, char **argv)
 	setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE); //stdout to Line Buffered
 
 	//=============================================Files & Variables=================================================//
-	
+	int pid_servidor = getpid();
 	int status_fd = open(STATUS_NAME, O_WRONLY | O_CREAT | O_TRUNC, 0666);	
 	STATUS s = newStatus(argv[1]);
-	writeStatus(status_fd, s);	//escrever o status
+	writeStatus(status_fd, s, pid_servidor);	//escrever o status
 
 	if (mkfifo(QUEUE_NAME, 0666) == -1)
 	{ //create fifo queue
@@ -100,7 +99,7 @@ int main(int argc, char **argv)
 			else
 			{
 				s = addTask(s, parsed, task_num); //update Status (add task)
-				writeStatus(status_fd, s);				//write Status
+				writeStatus(status_fd, s, pid_servidor);				//write Status
 
 				//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 				if ((pid = fork()) == 0)
@@ -128,7 +127,7 @@ int main(int argc, char **argv)
 			//freeStatus(clone);	
 		}
 		resetStatus(s);
-		writeStatus(status_fd, s);
+		writeStatus(status_fd, s, pid_servidor);
 	}
 	printf("Closing server...\n");
 	unlink(STATUS_NAME);
@@ -333,28 +332,6 @@ STATUS newStatus(char* conf_filepath)
     return r;
 }
 
-STATUS readStatus(STATUS s, char *conf_filepath)
-{
-	int conf_fd = open(conf_filepath, O_RDONLY | O_EXCL); //open conf
-
-	int bytes_read = 0;
-	char buffer[BUFFER_SIZE];
-	char **parsed = malloc(sizeof(char *) * 20);
-	for (int i = 0; (bytes_read = readln(conf_fd, buffer, BUFFER_SIZE)) > 0; i++)
-	{
-		s->num_filters++;
-
-		//conf:
-		//filtro filtrotraduzido max
-		parse(parsed, buffer, 1024, " ");
-		s->filters[i] = strdup(parsed[0]);
-		s->filtersT[i] = strdup(parsed[1]);
-		s->max[i] = atoi(parsed[2]);
-		s->running[i] = 0;
-	}
-
-	return s;
-}
 
 STATUS addTask(STATUS s, char **task, int task_number)
 {
@@ -398,10 +375,10 @@ STATUS removeTask(STATUS s, char **task, int task_number)
 	return s;
 }
 
-void writeStatus(int fd, STATUS s)
+void writeStatus(int fd, STATUS s, int pid)
 {
 	lseek(fd, SEEK_SET, 0);
-	char c[BUFFER_SIZE] = "";
+	char c[2 * BUFFER_SIZE] = "";
 	for (int i = 0; s->tasks[i] != NULL; i++)
 	{
 		sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
@@ -410,6 +387,7 @@ void writeStatus(int fd, STATUS s)
 	{
 		sprintf(c, "%sfilter %s: %d/%d (running/max)\n", c, s->filters[i], s->running[i], s->max[i]);
 	}
+	sprintf(c, "%spid: %d\n", c, pid);
 	write(fd, c, strlen(c));
 }
 
