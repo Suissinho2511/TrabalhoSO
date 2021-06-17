@@ -11,6 +11,7 @@
 #define BUFFER_SIZE 1024
 #define QUEUE_NAME "tmp/queue"
 #define STATUS_NAME "tmp/status"
+#define MAX_FILTERS 32
 
 int readLn(int fd, char *buffer, int size);
 
@@ -31,7 +32,7 @@ typedef struct status
 
 int run = 1;
 
-STATUS newStatus();
+STATUS newStatus(char *conf_filepath);
 
 STATUS readStatus(STATUS s, char *conf_filepath);
 
@@ -47,12 +48,10 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s);
 
 void resetStatus(STATUS s);
 
+STATUS status_clone(STATUS s);
+
 void sigterm_handler(int signum)
 {
-	printf("Closing server...\n");
-	//unlink(STATUS_NAME);
-	unlink(QUEUE_NAME);
-	printf("Server closed!\n");
 	run = 0;
 }
 
@@ -65,9 +64,8 @@ int main(int argc, char **argv)
 
 	//=============================================Files & Variables=================================================//
 	
-	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666);	
-	STATUS s = newStatus();
-	s = readStatus(s, argv[1]); //ler o status
+	int status_fd = open(STATUS_NAME, O_WRONLY | O_CREAT | O_TRUNC, 0666);	
+	STATUS s = newStatus(argv[1]);
 	writeStatus(status_fd, s);	//escrever o status
 
 	if (mkfifo(QUEUE_NAME, 0666) == -1)
@@ -92,8 +90,10 @@ int main(int argc, char **argv)
 			//pid transform filenameoriginal filenamedestino filtro0 filtro1 ...\n
 			size = parse(parsed, buffer, s->num_filters, " ");
 			pid_cliente = atoi(parsed[0]);
-			printf("\rRequest received (pid: %d).\n", pid_cliente);
-			if (run == 0){//!canRun((*s), parsed)){
+			printf("\rRequest received (pid: %s).\n",parsed[0]);
+			kill(pid_cliente, SIGUSR1);    // pending
+			//STATUS clone = status_clone(s);
+			if (run == 0){//canRun((*clone), parsed) == 0){
 				printf("\rRequest cannot be handled (pid: %d).\n", pid_cliente);
 				kill(pid_cliente, SIGUSR2);
 			}
@@ -124,14 +124,14 @@ int main(int argc, char **argv)
 				task_num++;
 				//freearr((void **)parsed, size);
 				memset(parsed, 0, size * sizeof(char *));
-			}	
+			}
+			//freeStatus(clone);	
 		}
-		//task_num = 0;
 		resetStatus(s);
 		writeStatus(status_fd, s);
 	}
 	printf("Closing server...\n");
-	//unlink(STATUS_NAME);
+	unlink(STATUS_NAME);
 	close(queue_fd);
 	unlink(QUEUE_NAME);
 	printf("Server closed!\n");
@@ -301,17 +301,36 @@ int findIndex(char **array, char *string, int size)
  * (need to be reviewed)
  */
 
-STATUS newStatus()
+STATUS newStatus(char* conf_filepath)
 {
-	STATUS r = calloc(1, sizeof(struct status));
-	r->pid_server = getpid();
-	//TODO: alocar espaço para os arrays
-	r->tasks = malloc(sizeof(char *) * 25);
-	r->filters = malloc(sizeof(char *) * 6);
-	r->filtersT = malloc(sizeof(char *) * 6);
-	r->max = malloc(sizeof(int *));
-	r->running = malloc(sizeof(int *));
-	return r;
+    int conf_fd = open(conf_filepath, O_RDONLY | O_EXCL);
+    int i, bytes_read = 0, max_tasks, max_filter;
+    char buffer[BUFFER_SIZE];
+    char **parsed = malloc(sizeof(char *) * 3);
+
+    STATUS r = calloc(1, sizeof(struct status));
+    
+    r -> pid_server =     getpid();
+    r -> filters     =    malloc(sizeof(char *)     * MAX_FILTERS);
+    r -> filtersT     =    malloc(sizeof(char *)     * MAX_FILTERS);
+    r -> max         =    malloc(sizeof(int)         * MAX_FILTERS);
+    r -> running     =    malloc(sizeof(int)         * MAX_FILTERS);
+
+    for (i = 0;(bytes_read = readln(conf_fd, buffer, BUFFER_SIZE)) > 0; i++)
+    {
+        //filtro filtrotraduzido max
+        parse(parsed, buffer, 3, " ");
+        r -> filters[i] = strdup(parsed[0]);
+        r -> filtersT[i] = strdup(parsed[1]);
+        max_filter = atoi(parsed[2]);
+        max_tasks += max_filter;
+        r -> max[i] = max_filter;
+        r -> running[i] = 0;
+    }
+
+    r -> num_filters = i;
+    r -> tasks = malloc(sizeof(char *) * (max_tasks + 1));
+    return r;
 }
 
 STATUS readStatus(STATUS s, char *conf_filepath)
@@ -381,19 +400,17 @@ STATUS removeTask(STATUS s, char **task, int task_number)
 
 void writeStatus(int fd, STATUS s)
 {
-	 lseek(fd, SEEK_SET, 0);
-	int bytes_write = 0;
+	lseek(fd, SEEK_SET, 0);
 	char c[BUFFER_SIZE] = "";
 	for (int i = 0; s->tasks[i] != NULL; i++)
 	{
-		if (strcmp(s->tasks[i], " ") != 0)
-			bytes_write += sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
+		sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
 	}
 	for (int i = 0; i < s->num_filters; i++)
 	{
-		bytes_write += sprintf(c, "%sfilter %s: %d/%d (running/max)\n", c, s->filters[i], s->running[i], s->max[i]);
+		sprintf(c, "%sfilter %s: %d/%d (running/max)\n", c, s->filters[i], s->running[i], s->max[i]);
 	}
-	write(fd, c, bytes_write);
+	write(fd, c, strlen(c));
 }
 
 void resetStatus(STATUS s){
@@ -402,4 +419,24 @@ void resetStatus(STATUS s){
         s -> running[i] = 0;
     }
     //memset(s->tasks, 0, s->num_filters * sizeof(char*));
+}
+
+STATUS status_clone(STATUS s)
+{
+	STATUS clone = malloc(sizeof(struct status));
+	clone->tasks = malloc(sizeof(char *) * 25);
+	clone->filters = malloc(sizeof(char *) * 6);
+	clone->filtersT = malloc(sizeof(char *) * 6);
+	clone->max = malloc(sizeof(int *));
+	clone->running = malloc(sizeof(int *));
+	for (int i = 0; i < s->num_filters; i++)
+	{
+		clone->filters[i] = strdup(s->filters[i]);
+		clone->filtersT[i] = strdup(s->filtersT[i]);
+		clone->max[i] = s->max[i];
+		clone->running[i] = s->running[i];
+		if (s->tasks[i] != NULL)
+			clone->tasks[i] = strdup(s->tasks[i]);
+	}
+	return clone;
 }
