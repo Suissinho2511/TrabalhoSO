@@ -41,7 +41,7 @@ STATUS removeTask(STATUS s, char **task, int task_number);
 
 int canRun(struct status s, char **task);
 
-void writeStatus(STATUS s);
+void writeStatus(int fd, STATUS s);
 
 int myexec(int in_fd, int out_fd, char **args, int size,STATUS s);
 
@@ -50,7 +50,7 @@ void resetStatus(STATUS s);
 void sigterm_handler(int signum)
 {
 	printf("Closing server...\n");
-	unlink(STATUS_NAME);
+	//unlink(STATUS_NAME);
 	unlink(QUEUE_NAME);
 	printf("Server closed!\n");
 	run = 0;
@@ -64,10 +64,11 @@ int main(int argc, char **argv)
 	setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE); //stdout to Line Buffered
 
 	//=============================================Files & Variables=================================================//
-
+	
+	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666);	
 	STATUS s = newStatus();
 	s = readStatus(s, argv[1]); //ler o status
-	writeStatus(s);	//escrever o status
+	writeStatus(status_fd, s);	//escrever o status
 
 	if (mkfifo(QUEUE_NAME, 0666) == -1)
 	{ //create fifo queue
@@ -92,23 +93,24 @@ int main(int argc, char **argv)
 			size = parse(parsed, buffer, s->num_filters, " ");
 			pid_cliente = atoi(parsed[0]);
 			printf("\rRequest received (pid: %d).\n", pid_cliente);
-			if (!canRun((*s), parsed)){
+			if (run == 0){//!canRun((*s), parsed)){
 				printf("\rRequest cannot be handled (pid: %d).\n", pid_cliente);
 				kill(pid_cliente, SIGUSR2);
 			}
 			else
 			{
 				s = addTask(s, parsed, task_num); //update Status (add task)
-				writeStatus(s);				//write Status
+				writeStatus(status_fd, s);				//write Status
 
 				//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
 				if ((pid = fork()) == 0)
 				{
 					int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
 					int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
+					kill(pid_cliente, SIGUSR1); //processing
 					pid = myexec(input_fd, output_fd, parsed, size, s);
 
-					kill(pid_cliente, SIGUSR1); //processing
+					
 					waitpid(pid, &wstatus, 0);	//waits till ffmpeg finishes...
 					if (WIFEXITED(wstatus))
 						kill(pid_cliente, SIGUSR1); //finished
@@ -120,16 +122,16 @@ int main(int argc, char **argv)
 				}
 
 				task_num++;
-				freearr((void **)parsed, size);
+				//freearr((void **)parsed, size);
 				memset(parsed, 0, size * sizeof(char *));
 			}	
 		}
 		//task_num = 0;
 		resetStatus(s);
-		writeStatus(s);
+		writeStatus(status_fd, s);
 	}
 	printf("Closing server...\n");
-	unlink(STATUS_NAME);
+	//unlink(STATUS_NAME);
 	close(queue_fd);
 	unlink(QUEUE_NAME);
 	printf("Server closed!\n");
@@ -340,12 +342,9 @@ STATUS addTask(STATUS s, char **task, int task_number)
 	char c[BUFFER_SIZE] = "";
 	for (int i = 1; task[i] != NULL; i++)
 	{
-		for (int j = 0; i > 3 && j < s->num_filters; j++)
-		{
-			if (strcmp(task[i], s->filters[j]) == 0)
-			{
-				s->running[j]++;
-			}
+		if (i > 3){
+			int index_filtro = findIndex(s->filters, task[i], s->num_filters);
+			if (index_filtro != -1) s->running[index_filtro]++;
 		}
 		sprintf(c, "%s %s", c, task[i]);
 	}
@@ -380,22 +379,21 @@ STATUS removeTask(STATUS s, char **task, int task_number)
 	return s;
 }
 
-void writeStatus(STATUS s)
+void writeStatus(int fd, STATUS s)
 {
-	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666); 
+	 lseek(fd, SEEK_SET, 0);
 	int bytes_write = 0;
 	char c[BUFFER_SIZE] = "";
 	for (int i = 0; s->tasks[i] != NULL; i++)
 	{
-		if (s->tasks[i] != NULL)
+		if (strcmp(s->tasks[i], " ") != 0)
 			bytes_write += sprintf(c, "%sTask #%d %s\n", c, i, s->tasks[i]);
 	}
 	for (int i = 0; i < s->num_filters; i++)
 	{
 		bytes_write += sprintf(c, "%sfilter %s: %d/%d (running/max)\n", c, s->filters[i], s->running[i], s->max[i]);
 	}
-	write(status_fd, c, bytes_write);
-	close(status_fd);
+	write(fd, c, bytes_write);
 }
 
 void resetStatus(STATUS s){
@@ -403,5 +401,5 @@ void resetStatus(STATUS s){
     {
         s -> running[i] = 0;
     }
-    memset(s->tasks, 0, s->num_filters * sizeof(char*));
+    //memset(s->tasks, 0, s->num_filters * sizeof(char*));
 }

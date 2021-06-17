@@ -11,6 +11,9 @@
 #define QUEUE_NAME "tmp/queue"
 #define STATUS_NAME "tmp/status"
 int status;
+int queue_fd;
+int size;
+char buffer[BUFFER_SIZE];
 
 void progress_signal(int signum)
 {
@@ -31,6 +34,7 @@ void progress_signal(int signum)
 void error_signal(int signum)
 {
 	printf("Signal %d received. Server error.\n", signum);
+	write(queue_fd, buffer, size + 1);
 }
 
 int main(int argc, char **argv)
@@ -59,7 +63,7 @@ int main(int argc, char **argv)
 		char stdout_buffer[BUFFER_SIZE];
 		setvbuf(stdout, stdout_buffer, _IOLBF, BUFFER_SIZE);
 
-		int queue_fd = open(QUEUE_NAME, O_WRONLY);
+		queue_fd = open(QUEUE_NAME, O_WRONLY);
 		printf("Session open (pid: %d)!\n", getpid());
 
 		//argv[1] transform
@@ -67,9 +71,7 @@ int main(int argc, char **argv)
 		//argv[3] ficheiro destino
 		//argv[4-] filtros
 
-		int size = 0;
-		char buffer[1024];
-
+		size = 0;
 		size += sprintf(buffer, "%d ", getpid());
 		for (int i = 1; i < argc; i++)
 		{
