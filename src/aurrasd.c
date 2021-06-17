@@ -41,19 +41,19 @@ STATUS removeTask(STATUS s, char **task, int task_number);
 
 int canRun(struct status s, char **task);
 
-void writeStatus(int fd, STATUS s);
+void writeStatus(STATUS s);
 
 int myexec(int in_fd, int out_fd, char **args, int size,STATUS s);
 
-STATUS status_clone(STATUS s);
+void resetStatus(STATUS s);
 
 void sigterm_handler(int signum)
 {
 	printf("Closing server...\n");
 	unlink(STATUS_NAME);
 	unlink(QUEUE_NAME);
-	run = 0;
 	printf("Server closed!\n");
+	run = 0;
 }
 
 int main(int argc, char **argv)
@@ -65,10 +65,9 @@ int main(int argc, char **argv)
 
 	//=============================================Files & Variables=================================================//
 
-	//int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666); //create status
 	STATUS s = newStatus();
 	s = readStatus(s, argv[1]); //ler o status
-	writeStatus(5, s);	//escrever o status
+	writeStatus(s);	//escrever o status
 
 	if (mkfifo(QUEUE_NAME, 0666) == -1)
 	{ //create fifo queue
@@ -93,46 +92,47 @@ int main(int argc, char **argv)
 			size = parse(parsed, buffer, s->num_filters, " ");
 			pid_cliente = atoi(parsed[0]);
 			printf("\rRequest received (pid: %d).\n", pid_cliente);
-
-			/*while(canRun((*s), parsed) == 0){
-				sleep(1);
-			}*/
-			STATUS clone = status_clone(s);
-			s = addTask(s, parsed, task_num); //update Status (add task)
-			writeStatus(5, s);				//write Status
-			kill(pid_cliente, SIGUSR1);
-
-			//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
-			if ((pid = fork()) == 0)
-			{
-				int filtro_atual, index_filtro;
-				int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
-				int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
-				pid = myexec(input_fd, output_fd, parsed, size, s);
-
-				/*for(filtro_atual = 0; filtro_atual < size-3; filtro_atual++)
-				{
-					index_filtro = findIndex(s->filters, parsed[4+filtro_atual], s->num_filters);
-					//bin_name = s->filtersT[index_filtro];
-					
-				}*/
-				kill(pid_cliente, SIGUSR1); //processing
-				waitpid(pid, &wstatus, 0);	//waits till ffmpeg finishes...
-				if (WIFEXITED(wstatus))
-					kill(pid_cliente, SIGUSR1); //finished
-				else							//or
-					kill(pid_cliente, SIGUSR2); //error
-
-				//s = removeTask(s, parsed, task_num);		//update Status (remove task)
-				//writeStatus(status_fd, clone);
-				_exit(0); //exits
+			if (!canRun((*s), parsed)){
+				printf("\rRequest cannot be handled (pid: %d).\n", pid_cliente);
+				kill(pid_cliente, SIGUSR2);
 			}
+			else
+			{
+				s = addTask(s, parsed, task_num); //update Status (add task)
+				writeStatus(s);				//write Status
 
-			task_num++;
-			freearr((void **)parsed, size);
-			memset(parsed, 0, size * sizeof(char *));
+				//server -> Controller -> filhos(1 para cada filtro) exemplo:guião5 ex5
+				if ((pid = fork()) == 0)
+				{
+					int input_fd = open(parsed[2], O_RDWR | O_EXCL, 0666);
+					int output_fd = open(parsed[3], O_RDWR | O_CREAT | O_TRUNC, 0666);
+					pid = myexec(input_fd, output_fd, parsed, size, s);
+
+					kill(pid_cliente, SIGUSR1); //processing
+					waitpid(pid, &wstatus, 0);	//waits till ffmpeg finishes...
+					if (WIFEXITED(wstatus))
+						kill(pid_cliente, SIGUSR1); //finished
+					else							//or
+						kill(pid_cliente, SIGUSR2); //error
+
+					//s = removeTask(s, parsed, task_num);		//update Status (remove task)
+					_exit(0); //exits
+				}
+
+				task_num++;
+				freearr((void **)parsed, size);
+				memset(parsed, 0, size * sizeof(char *));
+			}	
 		}
+		//task_num = 0;
+		resetStatus(s);
+		writeStatus(s);
 	}
+	printf("Closing server...\n");
+	unlink(STATUS_NAME);
+	close(queue_fd);
+	unlink(QUEUE_NAME);
+	printf("Server closed!\n");
 
 	return 0;
 }
@@ -203,12 +203,7 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 
 	if ((pid = fork()) == 0)
 	{
-		//filho
-		
-		
 
-		//sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
-		//execl(args[4], args[4], NULL);
 		int x = 4, num = size-4, end, i;
 		int pd[num - 1][2];
 		if(size==5)
@@ -385,9 +380,9 @@ STATUS removeTask(STATUS s, char **task, int task_number)
 	return s;
 }
 
-void writeStatus(int fd, STATUS s)
+void writeStatus(STATUS s)
 {
-	int status_fd = open(STATUS_NAME, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+	int status_fd = open(STATUS_NAME, O_RDWR | O_CREAT | O_TRUNC, 0666); 
 	int bytes_write = 0;
 	char c[BUFFER_SIZE] = "";
 	for (int i = 0; s->tasks[i] != NULL; i++)
@@ -403,22 +398,10 @@ void writeStatus(int fd, STATUS s)
 	close(status_fd);
 }
 
-STATUS status_clone(STATUS s)
-{
-	STATUS clone = malloc(sizeof(struct status));
-	clone->tasks = malloc(sizeof(char *) * 25);
-	clone->filters = malloc(sizeof(char *) * 6);
-	clone->filtersT = malloc(sizeof(char *) * 6);
-	clone->max = malloc(sizeof(int *));
-	clone->running = malloc(sizeof(int *));
-	for (int i = 0; i < s->num_filters; i++)
-	{
-		clone->filters[i] = strdup(s->filters[i]);
-		clone->filtersT[i] = strdup(s->filtersT[i]);
-		clone->max[i] = s->max[i];
-		clone->running[i] = s->running[i];
-		if (s->tasks[i] != NULL)
-			clone->tasks[i] = strdup(s->tasks[i]);
-	}
-	return clone;
+void resetStatus(STATUS s){
+    for (int i = 0; i < s->num_filters; i++)
+    {
+        s -> running[i] = 0;
+    }
+    memset(s->tasks, 0, s->num_filters * sizeof(char*));
 }

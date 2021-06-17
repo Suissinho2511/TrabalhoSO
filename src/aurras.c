@@ -18,17 +18,14 @@ void progress_signal(int signum)
 	if (status == 1)
 	{
 		printf("pending\n");
-		pause();
 	}
 	if (status == 2)
 	{
 		printf("processing\n");
-		pause();
 	}
 	if (status == 3)
 	{
 		printf("finished!\n");
-		alarm(1);
 	}
 }
 void error_signal(int signum)
@@ -81,6 +78,8 @@ int main(int argc, char **argv)
 		buffer[size] = '\n';
 		write(queue_fd, buffer, size + 1);
 
+		pause();
+		pause();
 		pause();
 
 		close(queue_fd);
