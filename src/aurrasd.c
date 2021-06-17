@@ -204,13 +204,24 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 	if ((pid = fork()) == 0)
 	{
 		//filho
-		dup2(in_fd, 0);
-		dup2(out_fd, 1);
+		
+		
 
 		//sprintf(args[4],"bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
 		//execl(args[4], args[4], NULL);
 		int x = 4, num = size-4, end, i;
 		int pd[num - 1][2];
+		if(size==5)
+		{
+			if((pid=fork()) == 0)
+			{
+				dup2(in_fd, 0);
+				dup2(out_fd,1);
+				sprintf(bin_name, "bin/aurrasd-filters/%s",s->filtersT[findIndex(s->filters, args[4], s->num_filters)]);
+				execl(bin_name, bin_name, NULL);
+			}
+			return pid;
+		}
 		for (i = 0; i < num; i++)
 		{
 			if (i == 0)
@@ -218,9 +229,10 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 				pipe(pd[i]);
 				if (fork() == 0)
 				{
-					//dup2(pd[i][0], in_fd);
+					dup2(pd[i][0], 0);
 					close(pd[i][0]);
-					dup2(pd[i][1], out_fd);
+					dup2(in_fd, 0);
+					dup2(pd[i][1], 1);
 					close(pd[i][1]);
 					sprintf(bin_name, "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
 					execl(bin_name, bin_name, NULL);
@@ -233,10 +245,13 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 			else if (i == num - 1)
 			{
 				if (fork() == 0)
+	
 				{
-					dup2(pd[i-1][0], in_fd);
+					dup2(pd[i-1][1], 1);
+					close(pd[i-1][1]);
+					dup2(pd[i-1][0], 0);
 					close(pd[i-1][0]);
-					x++;
+					dup2(out_fd, 1);
 					sprintf(bin_name, "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
 					execl(bin_name, bin_name, NULL);
 					_exit(0);
@@ -249,11 +264,10 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 				pipe(pd[i]);
 				if (fork() == 0)
 				{
-					dup2(pd[i][1], out_fd);
+					dup2(pd[i][1], 1);
 					close(pd[i][1]);
-					dup2(pd[i - 1][0], in_fd);
+					dup2(pd[i - 1][0], 0);
 					close(pd[i - 1][0]);
-					x++;
 					sprintf(bin_name, "bin/aurrasd-filters/%s", s->filtersT[findIndex(s->filters, args[x], s->num_filters)]);
 					execl(bin_name, bin_name, NULL);
 					_exit(0);
@@ -264,6 +278,7 @@ int myexec(int in_fd, int out_fd, char **args, int size,STATUS s)
 					close(pd[i][1]);
 				}
 			}
+			x++;
 		}
 		for (end = 0; end < i; end++)
 		{
